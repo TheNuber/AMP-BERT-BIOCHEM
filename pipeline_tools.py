@@ -118,13 +118,11 @@ def train_model(model, data_loader, loss_fn, optimizer, scheduler, verbose = Fal
         i = i + 1
         start = process_time_ns()
 
-        # Obtenemos los atributos del siguiente batch
-        input_ids = d['input_ids'].to("cuda:0")
-        attention_mask = d['attention_mask'].to("cuda:0")
+        # Usamos el batch como input para el modelo y obtenemos el output
+        outputs = model(d)
+
+        # Obtenemos las etiquetas del batch
         targets = d['labels'].to("cuda:0")
-        
-        # Lo usamos como input para el modelo y obtenemos el output
-        outputs = model(input_ids = input_ids, attention_mask = attention_mask)
 
         # La predicción es la clase con mayor logit
         preds = torch.argmax(outputs.logits, dim = 1)
@@ -187,13 +185,11 @@ def eval_model(model, data_loader, loss_fn, verbose = False):
             i = i + 1
             start = process_time_ns()
 
-            # Obtenemos los atributos del siguiente batch
-            input_ids = d['input_ids'].to("cuda:0")
-            attention_mask = d['attention_mask'].to("cuda:0")
+            # Usamos el batch como input para el modelo y obtenemos el output
+            outputs = model(d)
+
+            # Obtenemos las etiquetas del batch
             targets = d['labels'].to("cuda:0")
-        
-            # Lo usamos como input para el modelo y obtenemos el output
-            outputs = model(input_ids = input_ids, attention_mask = attention_mask)
 
             # La predicción es la clase con mayor logit
             preds = torch.argmax(outputs.logits, dim = 1)
@@ -500,3 +496,65 @@ def get_embeddings(model, data_loader):
             embeddings = torch.cat((embeddings, outputs.hidden_states), dim = 0)
             
     return indexes, labels, predictions, embeddings
+
+               
+class AMP_BioChemDataset(Dataset):
+    """
+        Esta clase permite formar un Dataset legible para los modelos de PyTorch
+        Implementa los métodos necesarios para entrenar un BERT
+    """
+    def __init__(self, df, biochem_cols, tokenizer_name='Rostlab/prot_bert_bfd', max_len=200):
+        super(Dataset, AMP_BioChemDataset).__init__(self)
+        self.tokenizer = BertTokenizer.from_pretrained(tokenizer_name, do_lower_case=False)
+        self.df = df
+        self.max_len = max_len
+        
+        self.seqs = list(df['aa_seq'])
+        self.biochem_cols = biochem_cols
+        self.biochem = df[biochem_cols]
+        self.labels = list(df['AMP'].astype(int))
+        
+    def __len__(self):
+        return len(self.labels)
+    
+    def __getitem__(self, idx):
+        seq = " ".join("".join(self.seqs[idx].split()))
+        seq_enc = self.tokenizer(
+            seq, 
+            truncation=True, 
+            padding='max_length', 
+            max_length=self.max_len,
+            return_tensors = 'pt',
+            return_attention_mask=True
+        )
+        seq_label = self.labels[idx]
+        seq_biochem = self.biochem.iloc[idx]
+        if "molecular_mass" in self.biochem_cols:
+            seq_biochem.loc['molecular_mass'] = seq_biochem['molecular_mass'] / 1e4
+        seq_biochem.transpose()
+        
+        return {
+            'idx': idx,
+            'input_ids': seq_enc['input_ids'].flatten(),
+            'attention_mask' : seq_enc['attention_mask'].flatten(),
+            'labels' : torch.tensor(seq_label, dtype=torch.long),
+            'biochem_info': torch.tensor(seq_biochem, dtype=torch.float32)
+        }
+    
+
+class AMP_BioChemDataLoader(DataLoader):
+    """
+        Es una estructura de datos iterable con mini-batches de datos
+    
+        dataframe   --  Un dataframe de Pandas con los datos, con columnas 'aa_seq' y 'AMP'
+        batch_size  --  El tamaño de mini-batch con el que vas a entrenar el modelo   
+    """
+    def __init__(self, dataframe, biochem_cols, batch_size):
+        DataLoader.__init__(
+            self,
+            AMP_BioChemDataset(dataframe, biochem_cols),
+            batch_size = batch_size,
+            num_workers = 2,
+            shuffle = True
+        )
+        

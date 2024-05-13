@@ -238,6 +238,7 @@ class MultiGPUBertForSequenceClassification(BertForSequenceClassification):
         
     def forward(
             self,
+            dataloader_item = None,
             input_ids: Optional[torch.Tensor] = None,
             attention_mask: Optional[torch.Tensor] = None,
             token_type_ids: Optional[torch.Tensor] = None,
@@ -251,7 +252,11 @@ class MultiGPUBertForSequenceClassification(BertForSequenceClassification):
         ) -> SequenceClassifierOutput:
             r"""
                 Como el clasificador base de la librería, pero sin la morralla de devolver diccionarios si se lo pides (nunca)
+                Además puedes pasarle s
             """
+            if dataloader_item != None:
+                input_ids = dataloader_item['input_ids'].to("cuda:0")
+                attention_mask = dataloader_item['attention_mask'].to("cuda:0") 
     
             # Paso los inputs por el bert para que me los devuelva codificados
             outputs = self.bert(
@@ -298,33 +303,25 @@ class MultiGPUBertForPeptideClassification(BertForSequenceClassification):
         
     def forward(
             self,
+            dataloader_item = None,
             input_ids: Optional[torch.Tensor] = None,
             attention_mask: Optional[torch.Tensor] = None,
-            token_type_ids: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.Tensor] = None,
-            head_mask: Optional[torch.Tensor] = None,
-            inputs_embeds: Optional[torch.Tensor] = None,
-            labels: Optional[torch.Tensor] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
-            biochem_info: torch.Tensor = None,
+            biochem_info: Optional[torch.Tensor] = None,
         ) -> SequenceClassifierOutput:
             r"""
-                Como el clasificador base de la librería, pero sin la morralla de devolver diccionarios si se lo pides (nunca)
+                Si se pasa un elemento de un dataloader, se sacan todos los parametros de ahí
+                Si no, se usan el resto
             """
+            if dataloader_item != None:
+                input_ids = dataloader_item['input_ids'].to("cuda:0")
+                attention_mask = dataloader_item['attention_mask'].to("cuda:0")
+                biochem_info = dataloader_item['biochem_info'].to('cuda:0')
+
     
             # Paso los inputs por el bert para que me los devuelva codificados
             outputs = self.bert(
                 input_ids,
                 attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-                position_ids=position_ids,
-                head_mask=head_mask,
-                inputs_embeds=inputs_embeds,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
             )
                 
             # Aqui los recojo
@@ -344,9 +341,7 @@ class MultiGPUBertForPeptideClassification(BertForSequenceClassification):
                 logits=logits,
                 hidden_states=pooled_output,
                 attentions=outputs.attentions,
-            )
-        
-        
+            )        
         
 
 class NNClassifier(BertForSequenceClassification):
@@ -418,3 +413,4 @@ class NNClassifier(BertForSequenceClassification):
                 hidden_states=outputs[1],
                 attentions=outputs.attentions,
             )
+ 

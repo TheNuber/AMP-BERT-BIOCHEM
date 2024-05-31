@@ -1,8 +1,18 @@
-@software{amp-bert-biochem,
-  author = {Ruben Coll Sanchez and Juan Antonio Botia Blaya and Alvaro Sanchez Ferrer and Nora Albaladejo Riad},
-  month = {6},
-  title = {{AMP-BERT-BIOCHEM}},
-  url = {https://github.com/github-linguist/linguist},
-  version = {1.0.0},
-  year = {2024}
-}
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Coll Sanchez"
+  given-names: "Ruben"
+  orcid: "https://orcid.org/0000-0000-0000-0000"
+- family-names: "Botia-Blaya"
+  given-names: "Juan Antonio"
+- family-names: "Sanchez-Ferrer"
+  given-names: "Alvaro"
+  orcid: "https://orcid.org/0000-0001-7266-4402"
+- family-names: "Albaladejo-Riad"
+  given-names: "Nora"
+
+title: "AMP-BERT-BIOCHEM"
+version: 1.0.0
+date-released: 2024-06-31
+url: "https://github.com/TheNuber/AMP-BERT-BIOCHEM"

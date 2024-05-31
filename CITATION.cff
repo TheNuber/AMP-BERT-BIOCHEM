@@ -1,8 +1,8 @@
-cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
-authors:
-  - family-names: Coll Sanchez
-    given-names: Ruben
-title: "AMP-BERT-BIOCHEM"
-version: 1.0.0
-date-released: 2024-05-31
+@software{amp-bert-biochem,
+  author = {Ruben Coll Sanchez and Juan Antonio Botia Blaya and Alvaro Sanchez Ferrer and Nora Albaladejo Riad},
+  month = {6},
+  title = {{AMP-BERT-BIOCHEM}},
+  url = {https://github.com/github-linguist/linguist},
+  version = {1.0.0},
+  year = {2024}
+}

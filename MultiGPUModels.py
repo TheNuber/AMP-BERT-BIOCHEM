@@ -27,7 +27,8 @@ class MultiGPUBertEncoder(nn.Module):
 
     def __init__(self, encoder):
         r"""
-            Copia un encoder, dividiendolo en dos partes, que van a sendas GPUs.
+            Copies a BertEncoder class, separating the BertLayer stack in half and sending
+            each substack into a different GPU
         """
         super().__init__()
         self.config = encoder.config
@@ -52,12 +53,11 @@ class MultiGPUBertEncoder(nn.Module):
         return_dict: Optional[bool] = True,
     ) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPastAndCrossAttentions]:
     
-        # Inicializaciones de variables
+        # Variable initialization
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
         all_cross_attentions = () if output_attentions and self.config.add_cross_attention else None
 
-        # Warning sin importancia
         if self.gradient_checkpointing and self.training:
             if use_cache:
                 logger.warning_once(
@@ -67,8 +67,7 @@ class MultiGPUBertEncoder(nn.Module):
 
         next_decoder_cache = () if use_cache else None
         
-        # PASO TODOS LOS TENSORES A LA GPU 0
-        
+        # START CHANGE: MOVE TENSORS TO GPU 0
         hidden_states, attention_mask, head_mask, encoder_hidden_states, encoder_attention_mask, past_key_values = change_device(
             "cuda:0", 
             hidden_states,
@@ -78,9 +77,9 @@ class MultiGPUBertEncoder(nn.Module):
             encoder_attention_mask,
             past_key_values
         )
+        # END CHANGE
         
-        # TRABAJO CON LA GPU 0
-
+        # Feed each layer as originally developed
         for i, layer_module in enumerate(self.layer1):
 
             if output_hidden_states:
@@ -119,8 +118,7 @@ class MultiGPUBertEncoder(nn.Module):
                 if self.config.add_cross_attention:
                     all_cross_attentions = all_cross_attentions + (layer_outputs[2],)
 
-        # AHORA ME CAMBIO A LA GPU 1 
-        
+        # START CHANGE: MOVE TENSORS TO GPU 1
         hidden_states, attention_mask, head_mask, encoder_hidden_states, encoder_attention_mask, past_key_values = change_device(
             "cuda:1", 
             hidden_states,
@@ -130,9 +128,9 @@ class MultiGPUBertEncoder(nn.Module):
             encoder_attention_mask,
             past_key_values
         )
-                    
-        # TRABAJO CON LA GPU 1 Y HAGO EXACTAMENTE LO MISMO
+        # END CHANGE
         
+        # Feed each layer as originally developed
         for i, layer_module in enumerate(self.layer2):   
         
             if output_hidden_states:
@@ -174,8 +172,7 @@ class MultiGPUBertEncoder(nn.Module):
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
             
-        # ME VUELVO A LA GPU 0 COMO SI NADA HUBIERA PASADO
-                    
+        # START CHANGE: MOVE TENSORS BACK TO GPU 0
         hidden_states, next_decoder_cache, all_hidden_states, all_self_attentions, all_cross_attentions = change_device(
             "cuda:0", 
             hidden_states, 
@@ -184,8 +181,7 @@ class MultiGPUBertEncoder(nn.Module):
             all_self_attentions,
             all_cross_attentions
         )
-
-        # DEVUELVO LOS OUTPUTS OBTENIDOS
+        # END CHANGE
         
         if not return_dict:
             return tuple(

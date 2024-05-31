@@ -9,7 +9,6 @@ from copy import deepcopy
 from torch.optim import AdamW
 from transformers import get_linear_schedule_with_warmup
 import pandas as pd
-from time import process_time_ns
 import torch
 
 
@@ -17,8 +16,8 @@ import torch
 
 class AMP_Dataset(Dataset):
     """
-        Esta clase permite formar un Dataset legible para los modelos de PyTorch
-        Implementa los métodos necesarios para entrenar un BERT
+        This class allows for creating a Dataset readable by PyTorch models
+        Implements the necessary methods to train a BERT
     """
     def __init__(self, df, tokenizer_name='Rostlab/prot_bert_bfd', max_len=200):
         super(Dataset, AMP_Dataset).__init__(self)
@@ -54,10 +53,10 @@ class AMP_Dataset(Dataset):
 
 class AMP_DataLoader(DataLoader):
     """
-        Es una estructura de datos iterable con mini-batches de datos
+        It is an iterable data structure with mini-batches of data
     
-        dataframe   --  Un dataframe de Pandas con los datos, con columnas 'aa_seq' y 'AMP'
-        batch_size  --  El tamaño de mini-batch con el que vas a entrenar el modelo   
+        dataframe   --  A Pandas dataframe with the data, with columns 'aa_seq' and 'AMP'
+        batch_size  --  The size of the mini-batch
     """
     def __init__(self, dataframe, batch_size):
         DataLoader.__init__(
@@ -69,37 +68,37 @@ class AMP_DataLoader(DataLoader):
         )
         
         
-# Funcion auxiliar para el calculo del loss
+# Auxiliary function for loss calculation
 def compute_loss(loss_fn, outputs, labels):
     """ 
-        Calcula el loss para realizar el backpropagation
+        Calculates the loss for backpropagation
     
-        loss_fn -- Funcion de perdida
-        outputs -- Los outputs del modelo tal cual        
-        labels  -- Etiquetas reales
+        loss_fn -- Loss function
+        outputs -- The raw model outputs       
+        labels  -- Actual labels
     """
 
     if isinstance(loss_fn, torch.nn.CrossEntropyLoss):
-        # La CrossEntropy necesita todos los logits
+        # CrossEntropy requires all logits
         return loss_fn(outputs.logits, labels)
     elif isinstance(loss_fn, torch.nn.MSELoss):
-        # El MSE necesita el softmax sobre la clase principal (el 1)
+        # MSE requires the softmax over the main class (the 1)
         preds = torch.softmax(outputs.logits, dim=1)[:,1:]
         return loss_fn(preds, labels.float())
     else:
         return None
 
     
-def train_model(model, data_loader, loss_fn, optimizer, scheduler, verbose = False):
+def train_model(model, data_loader, loss_fn, optimizer, scheduler, verbose=False):
     """
-        Entrena un modelo, y devuelve etiquetas reales, predicciones y el loss final
+        Trains a model and returns actual labels, predictions, and the final loss
         
-        model         -- El modelo a entrenar
-        data_loader   -- un dataloader con los ejemplos de entrenamiento
-        loss_fn       -- La funcion de loss (MSE, CrossEntropy, etc.)
-        optimizer     -- El optimizador del modelo
-        scheduler     -- El scheduler del learning rate del optimizador
-        verbose       -- True para mostrar informacion del entrenamiento por consola
+        model         -- The model to train
+        data_loader   -- A dataloader with training examples
+        loss_fn       -- The loss function (MSE, CrossEntropy, etc.)
+        optimizer     -- The model's optimizer
+        scheduler     -- The optimizer's learning rate scheduler
+        verbose       -- True to display training information on the console
     """
     
     model = model.train() # Explicitly setting model to train state
@@ -108,52 +107,52 @@ def train_model(model, data_loader, loss_fn, optimizer, scheduler, verbose = Fal
     losses = []
     correct_predictions = 0
     
-    # Variables para calcular una media del loss (no afecta al entrenamiento)
+    # Variables to calculate an average loss (does not affect training)
     mobile_loss = 0
     MOBILE_COEF = 0.9
     
     i = 0
     for d in data_loader:
-        # Medimos el tiempo
+        # Measure the time
         i = i + 1
         start = process_time_ns()
 
-        # Usamos el batch como input para el modelo y obtenemos el output
+        # Use the batch as input to the model and get the output
         outputs = model(d)
 
-        # Obtenemos las etiquetas del batch
+        # Get the batch labels
         targets = d['labels'].to("cuda:0")
 
-        # La predicción es la clase con mayor logit
-        preds = torch.argmax(outputs.logits, dim = 1)
+        # The prediction is the class with the highest logit
+        preds = torch.argmax(outputs.logits, dim=1)
                 
-        # Guardamos la prediccion y la etiqueta real, para luego calcular metricas
+        # Save the prediction and the actual label to calculate metrics later
         labels += targets.tolist()
         predictions += preds.tolist()
                 
-        # Calculamos el loss
+        # Calculate the loss
         loss = compute_loss(loss_fn, outputs, targets)
         losses.append(loss.item())
         
-        # Calculamos la media movil del loss
-        mobile_loss = MOBILE_COEF*mobile_loss + (1-MOBILE_COEF)*loss.item()
+        # Calculate the moving average of the loss
+        mobile_loss = MOBILE_COEF * mobile_loss + (1 - MOBILE_COEF) * loss.item()
         
-        # Hacemos el backprop
+        # Perform backpropagation
         loss.backward()
         
         # Clip the gradients of the model to prevent exploding gradients using clip_grad_norm
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm = 1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         scheduler.step()
         optimizer.zero_grad()
         
-        # Medimos de nuevo
+        # Measure again
         end = process_time_ns()
         step_time = (end - start) // (10 ** 6)
-        remaining_min = (step_time*(len(data_loader) - i) // (10 ** 3)) // 60
-        remaining_sec = (step_time*(len(data_loader) - i) // (10 ** 3)) - remaining_min * 60
+        remaining_min = (step_time * (len(data_loader) - i) // (10 ** 3)) // 60
+        remaining_sec = (step_time * (len(data_loader) - i) // (10 ** 3)) - remaining_min * 60
 
-        # Imprimimos si es necesario
+        # Print if necessary
         if verbose:
             if i % 10 == 0:
                 print(f"Step {i}/{len(data_loader)}: Loss (avg) {mobile_loss}, Step Time {step_time} ms, ETA {remaining_min}:{remaining_sec}")
@@ -161,56 +160,56 @@ def train_model(model, data_loader, loss_fn, optimizer, scheduler, verbose = Fal
     return labels, predictions, losses
 
 
-def eval_model(model, data_loader, loss_fn, verbose = False):
+def eval_model(model, data_loader, loss_fn, verbose=False):
     """
-        Evalua un modelo con un conjunto de datos de test
+        Evaluates a model with a test dataset
         
-        model         -- El modelo a entrenar
-        data_loader   -- un dataloader con los ejemplos de entrenamiento
-        loss_fn       -- La funcion de loss (MSE, CrossEntropy, etc.)
-        verbose       -- True para mostrar informacion del entrenamiento por consola
+        model         -- The model to evaluate
+        data_loader   -- A dataloader with the test examples
+        loss_fn       -- The loss function (MSE, CrossEntropy, etc.)
+        verbose       -- True to display evaluation information on the console
     """
     model = model.eval()
     labels = []
     predictions = []
     
-    # Variables para calcular una media del loss (no afecta al entrenamiento)
+    # Variables to calculate an average loss (does not affect training)
     mobile_loss = 0
     MOBILE_COEF = 0.9
 
     with torch.no_grad():
         i = 0
         for d in data_loader:
-            # Medimos el tiempo
+            # Measure the time
             i = i + 1
             start = process_time_ns()
 
-            # Usamos el batch como input para el modelo y obtenemos el output
+            # Use the batch as input to the model and get the output
             outputs = model(d)
 
-            # Obtenemos las etiquetas del batch
+            # Get the batch labels
             targets = d['labels'].to("cuda:0")
 
-            # La predicción es la clase con mayor logit
-            preds = torch.argmax(outputs.logits, dim = 1)
+            # The prediction is the class with the highest logit
+            preds = torch.argmax(outputs.logits, dim=1)
                 
-            # Guardamos la prediccion y la etiqueta real, para luego calcular metricas
+            # Save the prediction and the actual label to calculate metrics later
             labels += targets.tolist()
             predictions += preds.tolist()
             
-            # Calculamos el loss
+            # Calculate the loss
             loss = compute_loss(loss_fn, outputs, targets)
             
-            # Calculamos la media movil del loss
-            mobile_loss = MOBILE_COEF*mobile_loss + (1-MOBILE_COEF)*loss.item()
+            # Calculate the moving average of the loss
+            mobile_loss = MOBILE_COEF * mobile_loss + (1 - MOBILE_COEF) * loss.item()
             
-            # Medimos de nuevo
+            # Measure again
             end = process_time_ns()
             step_time = (end - start) // (10 ** 6)
-            remaining_min = (step_time*(len(data_loader) - i) // (10 ** 3)) // 60
-            remaining_sec = (step_time*(len(data_loader) - i) // (10 ** 3)) - remaining_min * 60
+            remaining_min = (step_time * (len(data_loader) - i) // (10 ** 3)) // 60
+            remaining_sec = (step_time * (len(data_loader) - i) // (10 ** 3)) - remaining_min * 60
     
-            # Imprimimos si es necesario
+            # Print if necessary
             if verbose:
                 if i % 10 == 0:
                     print(f"Step {i}/{len(data_loader)}: Loss (avg) {mobile_loss}, Step Time {step_time} ms, ETA {remaining_min}:{remaining_sec}")
@@ -218,19 +217,15 @@ def eval_model(model, data_loader, loss_fn, verbose = False):
     return labels, predictions
 
 
-# Define una funcion para calcular métricas sobre etiquetas y predicciones
-
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix, roc_auc_score, precision_recall_curve, auc
 from pandas import DataFrame
 
-# Define una funcion para calcular métricas sobre etiquetas y predicciones
-
 def compute_metrics(labels, preds):
     """ 
-        Calcula métricas para evaluar el modelo tras un entrenamiento
+        Calculates metrics to evaluate the model after training
     
-        labels  -- Etiquetas reales
-        preds   -- Etiquetas predichas (no logits ni valores no categóricos)
+        labels  -- Actual labels
+        preds   -- Predicted labels (not logits or non-categorical values)
     """
     precision, recall, f1, _ = precision_recall_fscore_support(labels, preds, average='binary')
     acc = accuracy_score(labels, preds)
@@ -367,7 +362,7 @@ def crossvalidate(model, train_dataframe, n_splits, n_repeats, model_params, los
 
 from torch.nn import CrossEntropyLoss
 
-def grid_search_bert_model(model, train_val_dataframe, grid, loss_fn = CrossEntropyLoss(), verbose = False):
+def grid_search_bert_model(model, train_val_dataframe, grid, loss_fn=CrossEntropyLoss(), verbose=False):
         
     param_combinations = product(
         grid["epochs"],
@@ -383,27 +378,30 @@ def grid_search_bert_model(model, train_val_dataframe, grid, loss_fn = CrossEntr
     all_metrics = []
     all_losses = []
         
-    # Calculamos todas las combinaciones con el grid de hiperparametros
+    # Calculate all combinations with the hyperparameter grid
     num_combinations = 1
     for key in grid.keys():
         num_combinations *= len(grid[key])
     
-    # Separamos en train y validacion
-    TRAIN_FRAC = 0.8
+    # Split into train and validation
+    kf = StratifiedKFold(
+        n_splits=5,
+        shuffle=True,
+        random_state=SEED
+    )
     
-    train_dataframe = train_val_dataframe.sample(frac=TRAIN_FRAC, random_state=SEED)
-    val_dataframe = train_val_dataframe.drop(train_dataframe.index)
+    train_dataframe, val_dataframe = train_val_dataframe.drop(train_dataframe.index)
     
     print()
     print(f"Number of combinations: {num_combinations}")
 
     for combination in param_combinations:
         
-        # En cada combinacion entrenamos y testeamos
+        # For each combination, train and test
         epochs, batch_size, learning_rate, betas, epsilon, weight_decay, warmup_steps = combination
         
-        train_data_loader = AMP_DataLoader(train_dataframe, batch_size = batch_size)
-        val_data_loader = AMP_DataLoader(val_dataframe, batch_size = batch_size)
+        train_data_loader = AMP_DataLoader(train_dataframe, batch_size=batch_size)
+        val_data_loader = AMP_DataLoader(val_dataframe, batch_size=batch_size)
 
         print()
         print("Next combination:")
@@ -415,30 +413,30 @@ def grid_search_bert_model(model, train_val_dataframe, grid, loss_fn = CrossEntr
         print(f"weight_decay: {weight_decay}")
         print(f"warmup_steps: {warmup_steps}")
         
-        # Copiamos el modelo
+        # Copy the model
         model_copy = deepcopy(model)
         
-        # Preparamos el optimizador y el scheduler
+        # Prepare the optimizer and the scheduler
         optimizer = AdamW(
             model_copy.parameters(), 
-            lr = learning_rate,
-            betas = betas,
-            eps = epsilon,
-            weight_decay = weight_decay
+            lr=learning_rate,
+            betas=betas,
+            eps=epsilon,
+            weight_decay=weight_decay
         )
         
         total_steps = len(train_data_loader) * epochs
 
         scheduler = get_linear_schedule_with_warmup(optimizer, 
-                                           num_warmup_steps = warmup_steps, 
-                                           num_training_steps = total_steps)
-        # Entrenamos
+                                                    num_warmup_steps=warmup_steps, 
+                                                    num_training_steps=total_steps)
+        # Train
         train_start = process_time_ns()
         for epoch in range(epochs):
             _, _, losses = train_model(model_copy, train_data_loader, loss_fn, optimizer, scheduler, verbose)
         train_end = process_time_ns()
         
-        # Medimos
+        # Measure
         eval_start = process_time_ns()
         labels, predictions = eval_model(model_copy, val_data_loader, loss_fn, verbose)
         eval_end = process_time_ns()
@@ -447,19 +445,19 @@ def grid_search_bert_model(model, train_val_dataframe, grid, loss_fn = CrossEntr
         metrics["train_time_secs"] = (train_end - train_start) // (10 ** 9)
         metrics["eval_time_secs"] = (eval_end - eval_start) // (10 ** 9)
         
-        # Guardamos las medidas
+        # Save the measures
         all_combs.append(combination)
         all_metrics.append(metrics)
         all_losses.append(losses)
                     
         del model_copy
         
-    df_combs = pd.DataFrame(all_combs, index = range(num_combinations), columns=['epochs', 'batch_size', 'learning_rate', 'betas', 'epsilon', 'weight_decay', 'warmup_steps'])
+    df_combs = pd.DataFrame(all_combs, index=range(num_combinations), columns=['epochs', 'batch_size', 'learning_rate', 'betas', 'epsilon', 'weight_decay', 'warmup_steps'])
     df_metrics = pd.concat(all_metrics)
     df_metrics.index = range(num_combinations)
     df_results = pd.concat([df_combs, df_metrics], axis=1)
     
-    df_losses = pd.DataFrame(all_losses, index = range(num_combinations))
+    df_losses = pd.DataFrame(all_losses, index=range(num_combinations))
     
     return df_results, df_losses
 
@@ -508,11 +506,12 @@ class AMP_BioChemDataset(Dataset):
         self.tokenizer = BertTokenizer.from_pretrained(tokenizer_name, do_lower_case=False)
         self.df = df
         self.max_len = max_len
-        
         self.seqs = list(df['aa_seq'])
         self.biochem_cols = biochem_cols
-        self.biochem = df[biochem_cols]
-        self.labels = list(df['AMP'].astype(int))
+        if "molecular_mass" in self.biochem_cols:
+            self.df.loc[:,'molecular_mass'] = self.df.loc[:,'molecular_mass'] / 1e4
+
+        self.labels = list(df['AMP'].astype(int))        
         
     def __len__(self):
         return len(self.labels)
@@ -528,17 +527,15 @@ class AMP_BioChemDataset(Dataset):
             return_attention_mask=True
         )
         seq_label = self.labels[idx]
-        seq_biochem = self.biochem.iloc[idx]
-        if "molecular_mass" in self.biochem_cols:
-            seq_biochem.loc['molecular_mass'] = seq_biochem['molecular_mass'] / 1e4
+        seq_biochem = self.df.iloc[idx].loc[self.biochem_cols]
         seq_biochem.transpose()
-        
+                
         return {
             'idx': idx,
             'input_ids': seq_enc['input_ids'].flatten(),
             'attention_mask' : seq_enc['attention_mask'].flatten(),
             'labels' : torch.tensor(seq_label, dtype=torch.long),
-            'biochem_info': torch.tensor(seq_biochem, dtype=torch.float32)
+            'biochem_info': torch.tensor(seq_biochem, dtype=torch.float32),
         }
     
 
@@ -558,3 +555,118 @@ class AMP_BioChemDataLoader(DataLoader):
             shuffle = True
         )
         
+
+from sklearn.model_selection import train_test_split
+from torch.optim.lr_scheduler import StepLR
+
+def grid_search_early_stop(model, train_val_dataframe, grid, batch_size, loss_fn = CrossEntropyLoss(), verbose = False):
+        
+    param_combinations = product(
+        grid["learning_rate"],
+        grid["weight_decay"],
+        grid["warmup_steps"],
+    )
+    
+    all_combs = []
+    all_metrics = []
+    all_losses = []
+        
+    # Calculamos todas las combinaciones con el grid de hiperparametros
+    num_combinations = 1
+    for key in grid.keys():
+        num_combinations *= len(grid[key])
+        
+    print()
+    print(f"Number of combinations: {num_combinations}")
+
+    # Separamos en train y validacion
+    TRAIN_FRAC = 0.8
+
+    if "Activity" in train_val_dataframe.columns:
+        activities = train_val_dataframe["Activity"]
+        train_dataframe, _, val_dataframe, _ = train_test_split(
+            train_val_dataframe, 
+            activities, 
+            test_size=0.2,
+            random_state=0,
+            stratify=activities
+        )
+    else:
+        amp = train_val_dataframe["AMP"]
+        train_dataframe, _, val_dataframe, _ = train_test_split(
+            train_val_dataframe, 
+            amp, 
+            test_size=0.2,
+            random_state=0,
+            stratify=amp
+        )
+    
+    for combination in param_combinations:
+        
+        # En cada combinacion entrenamos y testeamos
+        learning_rate, weight_decay, warmup_steps = combination
+        
+        train_data_loader = AMP_DataLoader(train_dataframe, batch_size = batch_size)
+        val_data_loader = AMP_DataLoader(val_dataframe, batch_size = batch_size)
+
+        print()
+        print("Next combination:")
+        print(f"learning_rate: {learning_rate}")
+        print(f"weight_decay: {weight_decay}")
+        print(f"warmup_steps: {warmup_steps}")
+        
+        # Copiamos el modelo
+        model_copy = deepcopy(model)
+        
+        # Preparamos el optimizador y el scheduler
+        optimizer = AdamW(
+            model_copy.parameters(), 
+            lr = learning_rate,
+            weight_decay = weight_decay
+        )
+        
+        total_steps = len(train_data_loader) * epochs
+
+        scheduler = StepLR(optimizer, step_size=5, gamma=0.2)
+        
+        # Entrenamos hasta la mejor época
+        stop_training = False
+        epochs = 0
+        prev_f1 = 0.0
+        
+        train_start = process_time_ns()
+        while not stop_training:
+            # Entrenamos una vez mas
+            epoch = epoch + 1
+            train_model(model_copy, train_data_loader, loss_fn, optimizer, scheduler, verbose)
+            
+            # Medimos
+            eval_start = process_time_ns()
+            labels, predictions = eval_model(model_copy, val_data_loader, loss_fn, verbose)
+            eval_end = process_time_ns()
+            metrics = compute_metrics(labels, predictions)
+
+            # Comprobamos si paramos ya
+            stop_training = (metrics["f1"] - prev_f1 < 0.01)
+
+        train_end = process_time_ns()
+        
+
+        metrics["train_time_secs"] = (train_end - train_start) // (10 ** 9)
+        metrics["eval_time_secs"] = (eval_end - eval_start) // (10 ** 9)
+        
+        # Guardamos las medidas
+        all_combs.append(combination)
+        all_metrics.append(metrics)
+        all_losses.append(losses)
+                    
+        del model_copy
+        
+    df_combs = pd.DataFrame(all_combs, index = range(num_combinations), columns=['epochs', 'batch_size', 'learning_rate', 'betas', 'epsilon', 'weight_decay', 'warmup_steps'])
+    df_metrics = pd.concat(all_metrics)
+    df_metrics.index = range(num_combinations)
+    df_results = pd.concat([df_combs, df_metrics], axis=1)
+    
+    df_losses = pd.DataFrame(all_losses, index = range(num_combinations))
+    
+    return df_results, df_losses

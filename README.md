@@ -21,5 +21,6 @@ the repository, based on what you want to use it for:
       - ReproductionModel.ipynb: this is the first notebook. It shows the re-engineering of AMP-BERT, along the creation of a DL pipeline and a comparison of models
       - ResultsVisualization.ipynb: this is the second notebook. It shows how UMAP plots were used to diagnose the possible flaws of AMP-BERT
       - BioChem.ipynb: this is the third notebook. It features the design of AMP-BERT, an enhancement over our reproduction of AMP-BERT, and its comparison with it
+      - FeatureAblation.ipynb: this is the fourth notebook. In it, several experiments are conducted, where the main model takes only subsets of predictors in order to analyze their importance.
       
       The rest of the notebooks represent work in progress.

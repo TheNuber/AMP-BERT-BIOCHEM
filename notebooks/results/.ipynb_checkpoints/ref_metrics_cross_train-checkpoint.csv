@@ -1,0 +1,2 @@
+accuracy,f1,recall,specificity,auroc,aupr
+0.9280,0.9278,0.9262,0.9303,0.9665,0.9653

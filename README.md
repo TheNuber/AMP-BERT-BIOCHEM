@@ -7,6 +7,9 @@ To be precise, it contains source code for the creation of custom, Transformer-b
 models.
 
 It is part of a Bachelor of Science final project, and it is in active use by a research team: that is why it is still in active development.
+
+![Overview](Overview.png)
+
 Its structure is separated in functional folders. That is, every folder contains the necessary files for a certain role. Here is how to travel through
 the repository, based on what you want to use it for:
 
